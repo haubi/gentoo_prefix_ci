@@ -5,214 +5,272 @@
 
 # Everything must be under a 'job' to be able to set the timeoutInMinutes
 jobs:
-  - job: "bootstrap_stage_1_and_2"
+  - job: "windows_bootstrap"
     timeoutInMinutes: 0
 
     pool:
-      vmImage: 'Ubuntu 16.04'
-
-    variables:
-      docker_image_name: gentoo_prefix_latest_image_initial
+      vmImage: 'win1803'
 
     steps:
-    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
-      displayName: 'docker login'
-    # We divide the boostrap in 3 parts to not go over the 6h limit as gcc takes ages
-    - script: cd initial_bootstrap && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
-      displayName: 'docker build'
-      # This means up to 6h
+    - bash: |
+        declare -p
+        oIFS=$IFS
+        IFS=: mypath=( ${PATH} )
+        IFS=${oIFS}
+        for x in "${mypath[@]}"
+        do
+            for y in "${x}"/*.exe
+            do echo "${y}"
+            done
+        done
+        pwd
+        cygpath -wp "${PATH}"
+      displayName: 'job info'
+    - bash: |
+        set -ex
+        curl --fail --fail-early --output setup-x86_64.exe https://cygwin.com/setup-x86_64.exe
+        curl --fail --fail-early --output bootstrap-prefix.sh https://gitweb.gentoo.org/repo/proj/prefix.git/plain/scripts/bootstrap-prefix.sh
+        chmod +x setup-x86_64.exe bootstrap-prefix.sh
+        ./setup-x86_64.exe --version
+        setupargs=(
+            --arch x86_64
+            --delete-orphans
+            --force-current
+            --no-admin
+            --no-desktop
+            --no-replaceonreboot
+            --no-shortcuts
+            --no-startmenu
+            --no-version-check
+            --only-site
+            --site http://ftp-stud.hs-esslingen.de/pub/Mirrors/sources.redhat.com/cygwin/
+            --prune-install
+            --quiet-mode
+            --root "${SYSTEM_WORKFOLDER}\\cygwin64"
+            --upgrade-also
+            --verbose
+            --packages wget,gcc-g++
+        )
+        ./setup-x86_64.exe "${setupargs[@]}"
+        cygroot=$(cygpath -u "${SYSTEM_WORKFOLDER}"/cygwin64)
+        mkdir -p "${cygroot}"/var/run/cygfork
+        cp bootstrap-prefix.sh "${cygroot}"
       timeoutInMinutes: 0
-      # Even if it fails I want to push the image to DockerHub for inspection
-      # continueOnError: true
-    # The variables are set on the Build options on the web interface
-    # Try to tag the latest failed image we ran
-    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'create image to push to DockerHub'
-      condition: failed()
-    # Push it
-    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'push image to DockerHub'
-      condition: always()
-    # Tag as :latest too
-    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'tag as latest'
-      condition: always()
-    # Push as latest
-    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'push latest to DockerHub'
-      condition: always()
- 
-
-  # - job: "bootstrap_stage_3_part_1"
-  #   timeoutInMinutes: 0
-  #   dependsOn: "bootstrap_stage_1_and_2"
-
-  #   pool:
-  #     vmImage: 'Ubuntu 16.04'
-
-  #   variables:
-  #     docker_image_name: gentoo_prefix_latest_image_stage_3_1
-
-  #   steps:
-  #   # The variables are set on the Build options on the web interface
-  #   - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
-  #     displayName: 'docker login'
-
-  #   - script: cd stage_3_1 && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
-  #     displayName: 'docker build stage_3_1'
-  #     # This means up to 6h
-  #     timeoutInMinutes: 0
-  #     # Even if it fails I want to push the image to DockerHub for inspection
-  #     # continueOnError: true
-  #   # # Try to tag the latest failed image we ran
-  #   - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-  #     displayName: 'create image to push to DockerHub'
-  #     condition: failed()
-  #   # Push it
-  #   - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-  #     displayName: 'push image to DockerHub'
-  #     condition: always()
-  #   # Tag as :latest too
-  #   - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
-  #     displayName: 'tag as latest'
-  #     condition: always()
-  #   # Push as latest
-  #   - script: docker push $(DockerHub_user)/$(docker_image_name):latest
-  #     displayName: 'push latest to DockerHub'
-  #     condition: always()
-
-
-  # - job: bootstrap_stage_3_part_2
-  #   timeoutInMinutes: 0
-  #   dependsOn: "bootstrap_stage_3_part_1"
-
-  #   pool:
-  #     vmImage: 'Ubuntu 16.04'
-
-  #   variables:
-  #     docker_image_name: gentoo_prefix_latest_image_stage_3_2
-
-  #   steps:
-  #   # The variables are set on the Build options on the web interface
-  #   - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
-  #     displayName: 'docker login'
-
-  #   - script: cd stage_3_2 && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
-  #     displayName: 'docker build stage_3_2'
-  #     # This means up to 6h
-  #     timeoutInMinutes: 0
-  #     # Even if it fails I want to push the image to DockerHub for inspection
-  #     # continueOnError: true
-  #   # # Try to tag the latest failed image we ran
-  #   - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-  #     displayName: 'create image to push to DockerHub'
-  #     condition: failed()
-  #   # Push it
-  #   - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-  #     displayName: 'push image to DockerHub'
-  #     condition: always()
-  #   # Tag as :latest too
-  #   - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
-  #     displayName: 'tag as latest'
-  #     condition: always()
-  #   # Push as latest
-  #   - script: docker push $(DockerHub_user)/$(docker_image_name):latest
-  #     displayName: 'push latest to DockerHub'
-  #     condition: always()
-
-  - job: package_stage
-    timeoutInMinutes: 0
-    dependsOn: "bootstrap_stage_1_and_2"
-
-    pool:
-      vmImage: 'Ubuntu 16.04'
-
-    variables:
-      docker_image_name: gentoo_prefix_latest_image_package_stage
-      platform: amd64
-
-    steps:
-    # The variables are set on the Build options on the web interface
-    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
-      displayName: 'docker login'
-
-    - script: cd package_stage && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
-      displayName: 'docker build package_stage'
-      # This means up to 6h
+      displayName: 'cygwin setup'
+    - script: "%SYSTEM_WORKFOLDER%/cygwin64/bin/bash --norc --noprofile -c '. /etc/profile; set -x; chmod a=rwxt /var/run/cygfork; LATEST_TREE_YES=1 TESTING_PV=latest /bootstrap-prefix.sh /opt/gentoo noninteractive'"
       timeoutInMinutes: 0
-      # Even if it fails I want to push the image to DockerHub for inspection
-      # continueOnError: true
-    # # Try to tag the latest failed image we ran
-    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'create image to push to DockerHub'
-      condition: failed()
-    # Push it
-    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'push image to DockerHub'
-    # Tag as :latest too
-    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'tag as latest'
-    # Push as latest
-    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'push latest to DockerHub'
+      displayName: 'prefix bootstrap'
 
-    # Create a temporal container to copy the gentoo_on_tmp.tar.gz
-    - script: |
-        id=$(docker create $(DockerHub_user)/$(docker_image_name))
-        docker cp $id:/tmp/gentoo_on_tmp.tar.gz $HOME
-      displayName: 'Extract gentoo_on_tmp.tar.gz from Docker image'
-    # Not really needed
-    # - script: docker rm -v $id
-    # Make a release
-    - script: python -m pip install --upgrade pip setuptools wheel
-      displayName: 'Install tools'
-    - script: python -m pip install --user githubrelease
-      displayName: 'Install tools 2'
-    - script: |
-        export DATE=$(date -I'minutes' | sed 's/+/plus/g'| sed 's/:/at/g')
-        export RELEASE_TAG=release/${DATE}
-        export RELEASE_FILE_NAME=gentoo_on_tmp-${PLATFORM}_${DATE}.tar.gz
-        export RELEASE_NAME="Gentoo Prefix on /tmp/gentoo"
-        export BODY="Use Gentoo Prefix with: tar xvf gentoo_on_tmp*.tar.gz; ./gentoo/startprefix"
-        mv $HOME/gentoo_on_tmp.tar.gz ${RELEASE_FILE_NAME}
-        export PATH=$HOME/.local/bin:$PATH
-        export PYTHONPATH=$HOME/.local/lib/python2.7/site-packages:$PYTHONPATH
-        githubrelease --github-token $(GitHub_Token) release $(Build.Repository.Name) create "${RELEASE_TAG}" --publish --name "${RELEASE_NAME}" --body "${BODY}" "${RELEASE_FILE_NAME}"
-      displayName: 'Create Release'
-
-  - job: "bootstrap_on_fedora_rap_off"
-    timeoutInMinutes: 0
-
-    pool:
-      vmImage: 'Ubuntu 16.04'
-
-    variables:
-      docker_image_name: gentoo_prefix_latest_image_initial_fedora
-
-    steps:
-    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
-      displayName: 'docker login'
-    # We divide the boostrap in 3 parts to not go over the 6h limit as gcc takes ages
-    - script: cd initial_bootstrap && docker build -f Dockerfile.fedora -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
-      displayName: 'docker build'
-      # This means up to 6h
-      timeoutInMinutes: 0
-      # Even if it fails I want to push the image to DockerHub for inspection
-      # continueOnError: true
-    # The variables are set on the Build options on the web interface
-    # Try to tag the latest failed image we ran
-    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'create image to push to DockerHub'
-      condition: failed()
-    # Push it
-    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
-      displayName: 'push image to DockerHub'
-      condition: always()
-    # Tag as :latest too
-    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'tag as latest'
-      condition: always()
-    # Push as latest
-    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
-      displayName: 'push latest to DockerHub'
-      condition: always()
+#  - job: "bootstrap_stage_1_and_2"
+#    timeoutInMinutes: 0
+#
+#    pool:
+#      vmImage: 'Ubuntu 16.04'
+#
+#    variables:
+#      docker_image_name: gentoo_prefix_latest_image_initial
+#
+#    steps:
+#    - script: uname -a; cat /proc/cpuinfo; cat /proc/meminfo; cat /etc/*-release
+#      displayName: 'job info'
+#    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
+#      displayName: 'docker login'
+#    # We divide the boostrap in 3 parts to not go over the 6h limit as gcc takes ages
+#    - script: cd initial_bootstrap && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
+#      displayName: 'docker build'
+#      # This means up to 6h
+#      timeoutInMinutes: 0
+#      # Even if it fails I want to push the image to DockerHub for inspection
+#      # continueOnError: true
+#    # The variables are set on the Build options on the web interface
+#    # Try to tag the latest failed image we ran
+#    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'create image to push to DockerHub'
+#      condition: failed()
+#    # Push it
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'push image to DockerHub'
+#      condition: always()
+#    # Tag as :latest too
+#    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'tag as latest'
+#      condition: always()
+#    # Push as latest
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'push latest to DockerHub'
+#      condition: always()
+# 
+#
+#  # - job: "bootstrap_stage_3_part_1"
+#  #   timeoutInMinutes: 0
+#  #   dependsOn: "bootstrap_stage_1_and_2"
+#
+#  #   pool:
+#  #     vmImage: 'Ubuntu 16.04'
+#
+#  #   variables:
+#  #     docker_image_name: gentoo_prefix_latest_image_stage_3_1
+#
+#  #   steps:
+#  #   # The variables are set on the Build options on the web interface
+#  #   - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
+#  #     displayName: 'docker login'
+#
+#  #   - script: cd stage_3_1 && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
+#  #     displayName: 'docker build stage_3_1'
+#  #     # This means up to 6h
+#  #     timeoutInMinutes: 0
+#  #     # Even if it fails I want to push the image to DockerHub for inspection
+#  #     # continueOnError: true
+#  #   # # Try to tag the latest failed image we ran
+#  #   - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#  #     displayName: 'create image to push to DockerHub'
+#  #     condition: failed()
+#  #   # Push it
+#  #   - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#  #     displayName: 'push image to DockerHub'
+#  #     condition: always()
+#  #   # Tag as :latest too
+#  #   - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
+#  #     displayName: 'tag as latest'
+#  #     condition: always()
+#  #   # Push as latest
+#  #   - script: docker push $(DockerHub_user)/$(docker_image_name):latest
+#  #     displayName: 'push latest to DockerHub'
+#  #     condition: always()
+#
+#
+#  # - job: bootstrap_stage_3_part_2
+#  #   timeoutInMinutes: 0
+#  #   dependsOn: "bootstrap_stage_3_part_1"
+#
+#  #   pool:
+#  #     vmImage: 'Ubuntu 16.04'
+#
+#  #   variables:
+#  #     docker_image_name: gentoo_prefix_latest_image_stage_3_2
+#
+#  #   steps:
+#  #   # The variables are set on the Build options on the web interface
+#  #   - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
+#  #     displayName: 'docker login'
+#
+#  #   - script: cd stage_3_2 && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
+#  #     displayName: 'docker build stage_3_2'
+#  #     # This means up to 6h
+#  #     timeoutInMinutes: 0
+#  #     # Even if it fails I want to push the image to DockerHub for inspection
+#  #     # continueOnError: true
+#  #   # # Try to tag the latest failed image we ran
+#  #   - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#  #     displayName: 'create image to push to DockerHub'
+#  #     condition: failed()
+#  #   # Push it
+#  #   - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#  #     displayName: 'push image to DockerHub'
+#  #     condition: always()
+#  #   # Tag as :latest too
+#  #   - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
+#  #     displayName: 'tag as latest'
+#  #     condition: always()
+#  #   # Push as latest
+#  #   - script: docker push $(DockerHub_user)/$(docker_image_name):latest
+#  #     displayName: 'push latest to DockerHub'
+#  #     condition: always()
+#
+#  - job: package_stage
+#    timeoutInMinutes: 0
+#    dependsOn: "bootstrap_stage_1_and_2"
+#
+#    pool:
+#      vmImage: 'Ubuntu 16.04'
+#
+#    variables:
+#      docker_image_name: gentoo_prefix_latest_image_package_stage
+#      platform: amd64
+#
+#    steps:
+#    # The variables are set on the Build options on the web interface
+#    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
+#      displayName: 'docker login'
+#
+#    - script: cd package_stage && docker build -f Dockerfile -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
+#      displayName: 'docker build package_stage'
+#      # This means up to 6h
+#      timeoutInMinutes: 0
+#      # Even if it fails I want to push the image to DockerHub for inspection
+#      # continueOnError: true
+#    # # Try to tag the latest failed image we ran
+#    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'create image to push to DockerHub'
+#      condition: failed()
+#    # Push it
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'push image to DockerHub'
+#    # Tag as :latest too
+#    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'tag as latest'
+#    # Push as latest
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'push latest to DockerHub'
+#
+#    # Create a temporal container to copy the gentoo_on_tmp.tar.gz
+#    - script: |
+#        id=$(docker create $(DockerHub_user)/$(docker_image_name))
+#        docker cp $id:/tmp/gentoo_on_tmp.tar.gz $HOME
+#      displayName: 'Extract gentoo_on_tmp.tar.gz from Docker image'
+#    # Not really needed
+#    # - script: docker rm -v $id
+#    # Make a release
+#    - script: python -m pip install --upgrade pip setuptools wheel
+#      displayName: 'Install tools'
+#    - script: python -m pip install --user githubrelease
+#      displayName: 'Install tools 2'
+#    - script: |
+#        export DATE=$(date -I'minutes' | sed 's/+/plus/g'| sed 's/:/at/g')
+#        export RELEASE_TAG=release/${DATE}
+#        export RELEASE_FILE_NAME=gentoo_on_tmp-${PLATFORM}_${DATE}.tar.gz
+#        export RELEASE_NAME="Gentoo Prefix on /tmp/gentoo"
+#        export BODY="Use Gentoo Prefix with: tar xvf gentoo_on_tmp*.tar.gz; ./gentoo/startprefix"
+#        mv $HOME/gentoo_on_tmp.tar.gz ${RELEASE_FILE_NAME}
+#        export PATH=$HOME/.local/bin:$PATH
+#        export PYTHONPATH=$HOME/.local/lib/python2.7/site-packages:$PYTHONPATH
+#        githubrelease --github-token $(GitHub_Token) release $(Build.Repository.Name) create "${RELEASE_TAG}" --publish --name "${RELEASE_NAME}" --body "${BODY}" "${RELEASE_FILE_NAME}"
+#      displayName: 'Create Release'
+#
+#  - job: "bootstrap_on_fedora_rap_off"
+#    timeoutInMinutes: 0
+#
+#    pool:
+#      vmImage: 'Ubuntu 16.04'
+#
+#    variables:
+#      docker_image_name: gentoo_prefix_latest_image_initial_fedora
+#
+#    steps:
+#    - script: docker login -u $(DockerHub_user) -p $(DockerHub_password)
+#      displayName: 'docker login'
+#    # We divide the boostrap in 3 parts to not go over the 6h limit as gcc takes ages
+#    - script: cd initial_bootstrap && docker build -f Dockerfile.fedora -t $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) .
+#      displayName: 'docker build'
+#      # This means up to 6h
+#      timeoutInMinutes: 0
+#      # Even if it fails I want to push the image to DockerHub for inspection
+#      # continueOnError: true
+#    # The variables are set on the Build options on the web interface
+#    # Try to tag the latest failed image we ran
+#    - script: docker tag `docker ps -a -l -q | xargs docker commit | awk -F":" '{print $2}'` $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'create image to push to DockerHub'
+#      condition: failed()
+#    # Push it
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):$(Build.BuildId)
+#      displayName: 'push image to DockerHub'
+#      condition: always()
+#    # Tag as :latest too
+#    - script: docker tag $(DockerHub_user)/$(docker_image_name):$(Build.BuildId) $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'tag as latest'
+#      condition: always()
+#    # Push as latest
+#    - script: docker push $(DockerHub_user)/$(docker_image_name):latest
+#      displayName: 'push latest to DockerHub'
+#      condition: always()
